@@ -27,6 +27,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stdlib.h"
 
 #include "system.h"
 #include "log.h"
@@ -43,6 +44,8 @@
 
 #include "estimator_kalman.h"
 #include "estimator.h"
+
+#include "motors.h"
 
 static bool isInit;
 static bool emergencyStop = false;
@@ -103,6 +106,19 @@ static void checkEmergencyStopTimeout()
  * responsibility of the different functions to run slower by skipping call
  * (ie. returning without modifying the output structure).
  */
+#define MANUAL_PWM_MODE
+#ifdef MANUAL_PWM_MODE
+static uint16_t motorPWM_0 = 0;
+static uint16_t motorPWM_1 = 0;
+static uint16_t motorPWM_2 = 0;
+static uint16_t motorPWM_3 = 0;
+static int motorID_0 = 4;
+static int motorID_1 = 4;
+static int motorID_2 = 4;
+static int motorID_3 = 4;
+static int changeYawMode = 0;
+static int targetYawAngel = 0;
+#endif
 
 static void stabilizerTask(void* param)
 {
@@ -140,7 +156,27 @@ static void stabilizerTask(void* param)
     } else {
       powerDistribution(&control);
     }
-
+#ifdef MANUAL_PWM_MODE
+    if ((motorID_0  >= 0) && (motorID_0 <= 3)){
+      motorsSetRatio(motorID_0, motorPWM_0);
+    }
+    if ((motorID_1  >= 0) && (motorID_1 <= 3)){
+      motorsSetRatio(motorID_1, motorPWM_1);
+    }
+    if ((motorID_2  >= 0) && (motorID_2 <= 3)){
+      motorsSetRatio(motorID_2, motorPWM_2);
+    }
+    if ((motorID_3  >= 0) && (motorID_3 <= 3)){
+      motorsSetRatio(motorID_3, motorPWM_3);
+    }
+    int absYaw = abs((double) state.attitude.yaw);
+    if ((changeYawMode != 0) && (targetYawAngel != 0) && ((int) absYaw < targetYawAngel)) {
+      motorsSetRatio(0, 60000);
+      motorsSetRatio(1, 3000);
+      motorsSetRatio(2, 3000);
+      motorsSetRatio(3, 3000);
+    }
+#endif
     tick++;
   }
 }
@@ -160,6 +196,32 @@ void stabilizerSetEmergencyStopTimeout(int timeout)
   emergencyStop = false;
   emergencyStopTimeout = timeout;
 }
+
+PARAM_GROUP_START(pwmPar)
+PARAM_ADD(PARAM_UINT8, mID0, &motorID_0)
+PARAM_ADD(PARAM_UINT16, mPWM0, &motorPWM_0)
+PARAM_ADD(PARAM_UINT8, mID1, &motorID_1)
+PARAM_ADD(PARAM_UINT16, mPWM1, &motorPWM_1)
+PARAM_ADD(PARAM_UINT8, mID2, &motorID_2)
+PARAM_ADD(PARAM_UINT16, mPWM2, &motorPWM_2)
+PARAM_ADD(PARAM_UINT8, mID3, &motorID_3)
+PARAM_ADD(PARAM_UINT16, mPWM3, &motorPWM_3)
+PARAM_ADD(PARAM_UINT8, yawAngel, &targetYawAngel)
+PARAM_ADD(PARAM_UINT8, changeYaw, &changeYawMode)
+PARAM_GROUP_STOP(pwmPar)
+
+LOG_GROUP_START(pwmLog)
+LOG_ADD(LOG_UINT8, mID, &motorID_0)
+LOG_ADD(LOG_UINT16, mPWM, &motorPWM_0)
+LOG_ADD(LOG_UINT8, mID, &motorID_1)
+LOG_ADD(LOG_UINT16, mPWM, &motorPWM_1)
+LOG_ADD(LOG_UINT8, mID, &motorID_2)
+LOG_ADD(LOG_UINT16, mPWM, &motorPWM_2)
+LOG_ADD(LOG_UINT8, mID, &motorID_3)
+LOG_ADD(LOG_UINT16, mPWM, &motorPWM_3)
+LOG_ADD(LOG_FLOAT, roll, &state.attitude.roll)
+LOG_ADD(LOG_FLOAT, pitch, &state.attitude.pitch)
+LOG_GROUP_STOP(pwmLog)
 
 LOG_GROUP_START(ctrltarget)
 LOG_ADD(LOG_FLOAT, roll, &setpoint.attitude.roll)
